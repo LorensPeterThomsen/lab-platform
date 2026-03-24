@@ -1,0 +1,46 @@
+services:
+
+  livelinkd:
+    build:
+      context: ./services/livelinkd
+      dockerfile: Dockerfile
+    container_name: lab_livelinkd
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ}
+      DB_CONNINFO: ${DB_CONNINFO}
+    network_mode: host
+
+  dashboard_server:
+    build:
+      context: ./services/dashboard_server
+      dockerfile: Dockerfile
+    container_name: lab_dashboard_server
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ}
+      DB_CONNINFO: ${DB_CONNINFO}
+      TOKENS_FILE: ${TOKENS_FILE}
+      LIVELINK_HOST: ${LIVELINK_HOST}
+      LIVELINK_PORT: ${LIVELINK_PORT}
+      DASHBOARD_PORT: ${DASHBOARD_PORT}
+    volumes:
+      - ./config/ds_tokens.json:/etc/ds_tokens.json:ro
+    network_mode: host
+
+  login_server:
+    build:
+      context: ./services/login_server
+      dockerfile: Dockerfile
+    container_name: lab_login_server
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ}
+      APP_DB: ${DB_CONNINFO}
+    network_mode: host

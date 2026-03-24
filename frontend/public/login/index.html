@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Login Frontend</title>
+  <style>
+    body { font-family: system-ui, Arial; max-width: 800px; margin: 40px auto; padding: 0 16px; }
+    h1 { margin-bottom: 8px; }
+    .row { display:flex; gap:16px; flex-wrap:wrap; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; flex: 1 1 340px; }
+    label { display:block; font-size: 12px; margin-top: 10px; }
+    input { width: 100%; padding: 10px; border:1px solid #ccc; border-radius: 8px; }
+    button { margin-top: 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #333; background: #fff; cursor:pointer; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    pre { background:#f6f6f6; padding: 12px; border-radius: 10px; overflow:auto; }
+    .ok { color: #0a7; }
+    .bad { color: #c00; }
+    small { color:#666; }
+  </style>
+</head>
+<body>
+  <h1>Login / Register test</h1>
+  <small>Server: <span id="base"></span></small>
+  <div style="margin-top:10px;">
+    Status: <b id="status">checking...</b>
+  </div>
+
+	<button id="adminBtn" style="display:none" onclick="location.href='/admin.html'">
+	  Admin panel
+	</button>
+	
+	<div class="row" style="margin-top:18px;">
+
+	  <!-- REGISTER (ADMIN ONLY) -->
+	  <div class="card" id="registerBox" style="display:none;">
+		  <h2>Register</h2>
+		  <label>Email</label>
+		  <input id="reg_email" autocomplete="email" />
+		  <label>Password</label>
+		  <input id="reg_pass" type="password" autocomplete="new-password" />
+		  <button id="btn_reg">Register</button>
+		  <pre id="out_reg"></pre>
+		</div>
+
+	
+	  <!-- LOGIN (ALWAYS VISIBLE) -->
+	  <div class="card">
+	    <h2>Login</h2>
+	    <label>Email</label>
+	    <input id="login_email" autocomplete="email" />
+	    <label>Password</label>
+	    <input id="login_pass" type="password" autocomplete="current-password" />
+	    <button id="btn_login">Login</button>
+	    <pre id="out_login"></pre>
+	  </div>
+	
+	</div>
+
+  <div class="row" style="margin-top:18px;">
+    <div class="card">
+      <h2>Me</h2>
+      <button id="btn_me">GET /auth/me</button>
+      <button id="btn_logout">Logout</button>
+      <pre id="out_me"></pre>
+      <small>Cookies håndteres automatisk af browseren (sid).</small>
+    </div>
+
+    <div class="card">
+      <h2>Health</h2>
+      <button id="btn_health">GET /health</button>
+      <pre id="out_health"></pre>
+    </div>
+
+    <div class="card">
+      <h2>Change password</h2>
+      <label>Old password</label>
+      <input id="cp_old" type="password" autocomplete="current-password" />
+      <label>New password</label>
+      <input id="cp_new" type="password" autocomplete="new-password" />
+      <button id="btn_cp">Change password</button>
+      <pre id="out_cp"></pre>
+      <small>Kræver at du er logget ind.</small>
+    </div>
+  </div>
+
+  </div>
+
+<script>
+  const BASE = ""; // tom => samme host som siden (https://13.49.231.237)
+  document.getElementById("base").textContent = location.origin;
+
+  async function getCsrf() {
+    // Hvis din backend ikke kræver CSRF, kan du ignorere dette.
+    // Hvis du kræver CSRF på POST, brug denne token i header: X-CSRF-Token
+    try {
+      const r = await fetch(BASE + "/auth/csrf", { credentials: "include" });
+      if (!r.ok) return null;
+      const j = await r.json();
+      return j.csrf_token || null;
+    } catch {
+      return null;
+    }
+  }
+
+	function clearLoginFields() {
+	  document.getElementById("login_email").value = "";
+	  document.getElementById("login_pass").value = "";
+	}
+	
+	function clearRegisterFields() {
+	  document.getElementById("reg_email").value = "";
+	  document.getElementById("reg_pass").value = "";
+	}
+
+
+
+  async function api(path, method, bodyObj) {
+    const headers = { "Content-Type": "application/json" };
+    const csrf = await getCsrf();
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+
+    const opts = {
+      method,
+      headers,
+      credentials: "include"
+    };
+    if (bodyObj) opts.body = JSON.stringify(bodyObj);
+
+    const r = await fetch(BASE + path, opts);
+    const text = await r.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+    return { status: r.status, text, json };
+  }
+
+  function show(el, res) {
+    const ok = (res.status >= 200 && res.status < 300);
+    el.className = ok ? "ok" : "bad";
+    el.textContent =
+      `HTTP ${res.status}\n` +
+      (res.json ? JSON.stringify(res.json, null, 2) : res.text);
+  }
+
+
+let authReqId = 0;
+
+async function refreshAuthUI() {
+  const myId = ++authReqId;
+
+  const adminBtn = document.getElementById("adminBtn");
+  const statusEl = document.getElementById("status");
+  const registerBox = document.getElementById("registerBox");
+	registerBox.style.display = "none"; // default
+
+  // default UI (med det samme)
+  adminBtn.style.display = "none";
+  statusEl.textContent = "checking...";
+  statusEl.className = "";
+
+  try {
+    const r = await fetch(BASE + "/auth/me", { credentials: "include" });
+
+    // hvis der kom en nyere request imens, så ignorer dette svar
+    if (myId !== authReqId) return;
+
+    if (r.ok) {
+      const j = await r.json();
+
+      //statusEl.textContent = `logged in (user_id=${j.id})`;
+      statusEl.textContent = `logged in as ${j.email} (id=${j.id})`;
+      statusEl.className = "ok";
+
+      if (j.is_admin) {
+      	adminBtn.style.display = "inline-block";
+      	registerBox.style.display = "block"; // eller "inline-block"
+      }
+      else 
+      	adminBtn.style.display = "none";
+
+      return;
+    }
+
+    if (r.status === 401) {
+      statusEl.textContent = "not logged in";
+      statusEl.className = "bad";
+      adminBtn.style.display = "none";
+      return;
+    }
+
+    statusEl.textContent = `error (HTTP ${r.status})`;
+    statusEl.className = "bad";
+    adminBtn.style.display = "none";
+  } catch (e) {
+    if (myId !== authReqId) return;
+    statusEl.textContent = "error (network)";
+    statusEl.className = "bad";
+    adminBtn.style.display = "none";
+  }
+}
+
+
+
+  document.getElementById("btn_reg").onclick = async () => {
+    const email = document.getElementById("reg_email").value.trim();
+    const password = document.getElementById("reg_pass").value;
+    const out = document.getElementById("out_reg");
+    out.textContent = "Working...";
+    const res = await api("/auth/register", "POST", { email, password });
+    await refreshAuthUI();
+    show(out, res);
+  };
+
+	document.getElementById("btn_login").onclick = async () => {
+	  const email = document.getElementById("login_email").value.trim();
+	  const password = document.getElementById("login_pass").value;
+	  const out = document.getElementById("out_login");
+	  out.textContent = "Working...";
+	
+	  const res = await api("/auth/login", "POST", {email, password });
+	  show(out, res);
+	
+	  if (res.status >= 200 && res.status < 300) {
+	    clearLoginFields();
+	  }
+	  await refreshAuthUI();
+	};
+	
+
+  document.getElementById("btn_me").onclick = async () => {
+    const out = document.getElementById("out_me");
+    out.textContent = "Working...";
+    const r = await fetch(BASE + "/auth/me", { credentials: "include" });
+    const text = await r.text();
+    let json = null; try { json = JSON.parse(text); } catch {}
+    show(out, { status: r.status, text, json });
+  };
+
+	document.getElementById("btn_logout").onclick = async () => {
+	  const out = document.getElementById("out_me");
+	  out.textContent = "Working...";
+	
+	  const res = await api("/auth/logout", "POST", {});
+	  show(out, res);
+	
+	  clearLoginFields();
+	  clearRegisterFields(); // optional, men ofte rart i admin UI
+	
+	  await refreshAuthUI();
+	};
+
+  document.getElementById("btn_cp").onclick = async () => {
+    const old_password = document.getElementById("cp_old").value;
+    const new_password = document.getElementById("cp_new").value;
+    const out = document.getElementById("out_cp");
+    out.textContent = "Working...";
+
+    const res = await api("/auth/change_password", "POST", { old_password, new_password });
+    show(out, res);
+
+    await refreshAuthUI();
+  };
+
+  document.getElementById("btn_health").onclick = async () => {
+    const out = document.getElementById("out_health");
+    out.textContent = "Working...";
+    const r = await fetch(BASE + "/health", { credentials: "include" });
+    const text = await r.text();
+    let json = null; try { json = JSON.parse(text); } catch {}
+    show(out, { status: r.status, text, json });
+  };
+  // auto-check on page load
+
+	window.onload = () => {
+	  refreshAuthUI();
+	};
+  
+//   refreshStatus();
+</script>
+</body>
+</html>
+

@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin</title>
+  <style>
+		.pager {
+		  display: flex;
+		  align-items: center;
+		  gap: 10px;
+		}
+		
+		.controls {
+		  flex: 1;
+		  display: flex;
+		  align-items: center;
+		  gap: 8px;
+		  justify-content: center;
+		}
+		
+		#btn_prev {
+		  margin-right: auto;
+		}
+		
+		#btn_next {
+		  margin-left: auto;
+		}
+  	
+    body { font-family: system-ui, Arial; max-width: 1000px; margin: 40px auto; padding: 0 16px; }
+    h1 { margin-bottom: 8px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    button { padding: 8px 12px; border-radius: 8px; border:1px solid #333; background:#fff; cursor:pointer; }
+    input { padding: 8px 10px; border:1px solid #ccc; border-radius: 8px; }
+    table { width:100%; border-collapse: collapse; margin-top: 14px; }
+    th, td { border-bottom: 1px solid #eee; padding: 10px 8px; text-align:left; font-size: 14px; }
+    th { background:#fafafa; position: sticky; top: 0; }
+    .ok { color:#0a7; }
+    .bad { color:#c00; }
+    .pill { display:inline-block; padding:2px 8px; border-radius: 999px; font-size: 12px; border:1px solid #ddd; }
+    .right { text-align:right; }
+    pre { background:#f6f6f6; padding: 12px; border-radius: 10px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <h1>Admin</h1>
+  <div class="row">
+    <a href="/"><button>← Back</button></a>
+    <button id="btn_refresh">Refresh</button>
+    <span>Status: <b id="status">…</b></span>
+    <span style="margin-left:auto;"></span>
+    <label>Limit</label><input id="limit" value="50" size="4" />
+    <label>Offset</label><input id="offset" value="0" size="4" />
+    <label>Search</label>
+		<input id="q" placeholder="email contains..." size="24" />
+		<div class="pager">
+		  <button id="btn_prev">Prev</button>
+		
+		
+		  <button id="btn_next">Next</button>
+		</div>
+  </div>
+
+  <pre id="out" style="display:none;"></pre>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:80px;">ID</th>
+        <th>Email</th>
+        <th style="width:110px;">Admin</th>
+        <th style="width:120px;">Disabled</th>
+        <th style="width:190px;">Created</th>
+        <th style="width:280px;" class="right">Actions</th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <tr><td colspan="5">Loading…</td></tr>
+    </tbody>
+  </table>
+
+<script>
+  const BASE = "";
+
+  async function getCsrf() {
+    try {
+      const r = await fetch(BASE + "/auth/csrf", { credentials: "include" });
+      if (!r.ok) return null;
+      const j = await r.json();
+      return j.csrf_token || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function setStatus(text, ok) {
+    const el = document.getElementById("status");
+    el.textContent = text;
+    el.className = ok ? "ok" : "bad";
+  }
+
+  async function api(path, method, bodyObj) {
+    const headers = { "Content-Type": "application/json" };
+    const csrf = await getCsrf();
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+
+    const opts = { method, headers, credentials: "include" };
+    if (bodyObj) opts.body = JSON.stringify(bodyObj);
+
+    const r = await fetch(BASE + path, opts);
+    const text = await r.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+    return { status: r.status, json, text };
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+	function rowHtml(u) {
+	  const adminPill = u.is_admin ? `<span class="pill ok">yes</span>` : `<span class="pill">no</span>`;
+	  const disPill   = u.disabled ? `<span class="pill bad">yes</span>` : `<span class="pill ok">no</span>`;
+	  const created   = u.created_at ? esc(u.created_at) : "";
+	
+	  const btnDisable = u.disabled
+	    ? `<button data-act="enable" data-id="${u.id}">Enable</button>`
+	    : `<button data-act="disable" data-id="${u.id}">Disable</button>`;
+	
+	  const btnDelete = `<button data-act="delete" data-id="${u.id}">Delete</button>`;
+	
+	  const btnAdmin = u.is_admin
+	    ? `<button data-act="unadmin" data-id="${u.id}">Revoke admin</button>`
+	    : `<button data-act="admin" data-id="${u.id}">Make admin</button>`;
+	
+	  return `
+	    <tr>
+	      <td>${u.id}</td>
+	      <td>${esc(u.email)}</td>
+	      <td>${adminPill}</td>
+	      <td>${disPill}</td>
+	      <td>${created}</td>
+	      <td class="right">${btnAdmin} ${btnDisable} ${btnDelete}</td>
+	    </tr>`;
+	}
+
+let lastTotal = 0;
+
+	async function refresh() {
+	  const limit = parseInt(document.getElementById("limit").value || "50", 10);
+	  const offset = parseInt(document.getElementById("offset").value || "0", 10);
+	  const q = (document.getElementById("q").value || "").trim();
+	
+	  setStatus("loading…", true);
+	
+	  const url = `${BASE}/admin/users?limit=${limit}&offset=${offset}&q=${encodeURIComponent(q)}`;
+	  const r = await fetch(url, { credentials: "include" });
+	  const text = await r.text();
+	  let j = null; try { j = JSON.parse(text); } catch {}
+	
+	  if (!r.ok) {
+	    setStatus(`error HTTP ${r.status}`, false);
+	    document.getElementById("tbody").innerHTML = `<tr><td colspan="6">${esc(text)}</td></tr>`;
+	    return;
+	  }
+	
+	  if (!j || !j.users) {
+	    setStatus("bad JSON", false);
+	    document.getElementById("tbody").innerHTML = `<tr><td colspan="6">Bad JSON</td></tr>`;
+	    return;
+	  }
+	
+	  lastTotal = j.total || 0;
+	  const n = j.users.length;
+	  setStatus(`ok (${n} users)`, true);
+	
+	  document.getElementById("tbody").innerHTML = j.users.map(rowHtml).join("");
+	
+	  const from = Math.min(lastTotal, offset + 1);
+	  const to = Math.min(lastTotal, offset + n);
+	  document.getElementById("pageinfo").textContent =
+	    lastTotal ? `Showing ${from}-${to} of ${lastTotal}` : `Showing ${n}`;
+	}
+
+
+  document.getElementById("btn_refresh").onclick = refresh;
+
+
+	document.getElementById("btn_prev").onclick = async () => {
+	  const limit = parseInt(document.getElementById("limit").value || "50", 10);
+	  let offset = parseInt(document.getElementById("offset").value || "0", 10);
+	  offset = Math.max(0, offset - limit);
+	  document.getElementById("offset").value = String(offset);
+	  await refresh();
+	};
+	
+	document.getElementById("btn_next").onclick = async () => {
+	  const limit = parseInt(document.getElementById("limit").value || "50", 10);
+	  let offset = parseInt(document.getElementById("offset").value || "0", 10);
+	  const next = offset + limit;
+	  if (lastTotal && next >= lastTotal) return;
+	  document.getElementById("offset").value = String(next);
+	  await refresh();
+	};
+
+	document.getElementById("q").addEventListener("keydown", async (e) => {
+	  if (e.key === "Enter") {
+	    document.getElementById("offset").value = "0";
+	    await refresh();
+	  }
+	});
+
+
+  document.getElementById("tbody").addEventListener("click", async (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    const id = parseInt(btn.getAttribute("data-id"), 10);
+    const act = btn.getAttribute("data-act");
+
+    if (act === "delete") {
+      if (!confirm(`Delete user ${id}? This cannot be undone.`)) return;
+      const res = await api("/admin/users/delete", "POST", { user_id: id });
+      if (res.status !== 200) {
+        alert(`Error HTTP ${res.status}\n${res.text}`);
+        return;
+      }
+      await refresh();
+      return;
+    }
+
+    if (act === "disable" || act === "enable") {
+      const disabled = (act === "disable");
+      const res = await api("/admin/users/disable", "POST", { user_id: id, disabled });
+      if (res.status !== 200) {
+        alert(`Error HTTP ${res.status}\n${res.text}`);
+        return;
+      }
+      await refresh();
+      return;
+    }
+    
+    if (act === "admin" || act === "unadmin") {
+		  const is_admin = (act === "admin");
+		  const res = await api("/admin/users/set_admin", "POST", { user_id: id, is_admin });
+		  if (res.status !== 200) {
+		    alert(`Error HTTP ${res.status}\n${res.text}`);
+		    return;
+		  }
+		  await refresh();
+		  return;
+		}
+  });
+
+  // load on open
+  refresh();
+</script>
+</body>
+</html>
+

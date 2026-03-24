@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: lab_postgres
+    restart: "no"
+    environment:
+      TZ: ${TZ}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55432:5432"
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: lab_nginx
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./frontend/public:/usr/share/nginx/html:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+
+  livelinkd:
+    build:
+      context: ./services/livelinkd
+      dockerfile: Dockerfile
+    container_name: lab_livelinkd
+    restart: "no"
+    environment:
+      TZ: ${TZ}
+      DB_CONNINFO: ${DB_CONNINFO}
+      LIVELINK_PORT: ${LIVELINK_PORT}
+      LIVELINK_POLL_MS: ${LIVELINK_POLL_MS}
+    network_mode: host
+
+  dashboard_server:
+    build:
+      context: ./services/dashboard_server
+      dockerfile: Dockerfile
+    container_name: lab_dashboard_server
+    restart: "no"
+    environment:
+      TZ: ${TZ}
+      DB_CONNINFO: ${DB_CONNINFO}
+      TOKENS_FILE: ${TOKENS_FILE}
+      LIVELINK_HOST: ${LIVELINK_HOST}
+      LIVELINK_PORT: ${LIVELINK_PORT}
+      DASHBOARD_PORT: ${DASHBOARD_PORT}
+    volumes:
+      - ./config/ds_tokens.json:/etc/ds_tokens.json:ro
+    network_mode: host
+
+  login_server:
+    build:
+      context: ./services/login_server
+      dockerfile: Dockerfile
+    container_name: lab_login_server
+    restart: "no"
+    environment:
+      TZ: ${TZ}
+      APP_DB: ${DB_CONNINFO}
+    network_mode: host

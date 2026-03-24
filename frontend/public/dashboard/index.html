@@ -1,0 +1,939 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dashboard</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; background:#0b0f14; color:#e8eef6; }
+    header { padding: 14px 18px; border-bottom:1px solid #1b2633; display:flex; gap:12px; align-items:center; }
+    .pill { font-size:12px; padding:4px 10px; border-radius:999px; background:#132033; border:1px solid #1b2b44; }
+    .ok { background:#0f2a1a; border-color:#1f5a34; }
+    .bad { background:#2a1313; border-color:#6a1f1f; }
+    .warn{ background:#2a2513; border-color:#6a5a1f; }
+    main { padding: 18px; }
+    .grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+    .card { background:#0f1620; border:1px solid #1b2633; border-radius:14px; padding:14px; cursor:pointer; }
+    .card:hover { border-color:#2a3c55; }
+    .row { display:flex; justify-content:space-between; gap:10px; }
+    .title {
+		  font-size: 22px;
+		  font-weight: 700;
+		  letter-spacing: 0.5px;
+		}
+    .sub { font-size:12px; opacity:.85; margin-top:4px; }
+    .meta { font-size:13px; margin-top:10px; line-height:1.35; opacity:.95; }
+    .muted { opacity:.75; }
+    .hidden { display:none; }
+    .btn { background:#132033; border:1px solid #1b2b44; color:#e8eef6; border-radius:10px; padding:8px 10px; cursor:pointer; }
+    .btn:hover { border-color:#2a3c55; }
+    .curve-wrap { background:#0f1620; border:1px solid #1b2633; border-radius:14px; padding:14px; }
+    canvas { max-width: 100%; }
+    .err { color:#ffb3b3; font-size:12px; margin-left:auto; }
+
+		.pill {
+		  padding: 6px 14px;
+		  border-radius: 14px;
+		  font-weight: 700;
+		  font-size: 16px;
+		}
+		
+		.pill.good {
+		  background: #1f8f4a;
+		  color: #fff;
+		}
+		
+		.pill.bad {
+		  background: #c62828;
+		  color: #fff;
+		}
+		
+		.pill.warn {
+		  background: #e6a100;
+		  color: #000;
+		}		  
+		.card.good {
+		  border: 2px solid #1f8f4a;
+		  background: rgba(31,143,74,0.12);
+		}
+		
+		.card.bad {
+		  border: 2px solid #c62828;
+		  background: rgba(198,40,40,0.15);
+		}
+
+		.spark-wrap {
+		  margin: 10px 0 6px;
+		}
+		
+		.picker-panel {
+		  margin-bottom: 16px;
+		  padding: 12px 14px;
+		  border-radius: 12px;
+		  background: #0f1620;
+		  border: 1px solid #1b2633;
+		}
+		
+		.picker-row {
+		  display: flex;
+		  gap: 10px;
+		  align-items: center;
+		  flex-wrap: wrap;
+		}
+		
+		.picker-label {
+		  font-weight: 600;
+		  min-width: 80px;
+		}
+		
+		#boxPickerInput {
+		  min-width: 260px;
+		  padding: 8px 10px;
+		  border-radius: 10px;
+		  border: 1px solid #2a3c55;
+		  background: #0b0f14;
+		  color: #e8eef6;
+		}
+		
+		#boxPickerInput:focus {
+		  outline: none;
+		  border-color: #4d6a8b;
+		}
+		
+		.btn:disabled {
+		  opacity: 0.45;
+		  cursor: not-allowed;
+		}
+
+		canvas.spark { width: 100%; height: 96px; display:block; border-radius: 10px; background: rgba(0,0,0,0.04); }
+		.spark-label { font-size: 12px; margin-top: 6px; }  
+
+  </style>
+
+  <!-- Chart.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="pill" id="connPill">WS: connecting…</div>
+    <div class="pill" id="labPill">Lab: ?</div>
+    <div class="pill" id="revPill">rev: -</div>
+    <div class="pill" id="plcPill">PLC: ?</div>
+    <div class="err" id="errText"></div>
+  </header>
+
+  <main>
+    <!-- View: boxes -->
+    <section id="viewBoxes">
+      <div class="grid" id="boxGrid"></div>
+    </section>
+
+		<section id="boxPickerPanel" class="picker-panel">
+		  <div class="picker-row">
+		    <label for="boxPickerInput" class="picker-label">Vælg boks</label>
+		    <input
+		      id="boxPickerInput"
+		      list="boxPickerList"
+		      placeholder="Skriv QR-tekst..."
+		      autocomplete="off"
+		    />
+		    <datalist id="boxPickerList"></datalist>
+		
+		    <button class="btn" id="openAnyCurveBtn" disabled>Kurve</button>
+		    <button class="btn" id="exportAnyDataBtn" disabled>Data</button>
+		  </div>
+		</section>    
+
+    <!-- View: curve -->
+    <section id="viewCurve" class="hidden">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+        <button class="btn" id="backBtn">← Tilbage</button>
+        <div class="pill" id="curveTitle">Kurve</div>
+        <div class="pill" id="curveSub"></div>
+      </div>
+
+      <div class="curve-wrap">
+        <canvas id="chart" height="120"></canvas>
+        <div class="muted" style="font-size:12px;margin-top:10px;" id="curveMeta"></div>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:10px;">
+				<button class="btn" id="curvePrevBtn" onclick="curvePrev()">◀ Forrige</button>
+				<button class="btn" id="curveNowBtn" onclick="curveNow()">Nu</button>
+				<button class="btn" id="curveNextBtn" onclick="curveNext()">Næste ▶</button>
+			</div>
+    </section>
+  </main>
+
+<script>
+(() => {
+  // ---------------- config ----------------
+  const qs = new URLSearchParams(location.search);
+  const sparksByBoxId = new Map(); // boxId -> points[]
+  const token = qs.get("token") || "";
+  if (!token) {
+    alert("Mangler token i URL. Brug fx: ?token=LAB1_DASH_TOKEN...");
+  }
+
+
+  // WS URL via nginx reverse proxy:
+  // https://your.domain/dashboard/?token=...  ->  wss://your.domain/ws/dashboard?token=...
+  const wsScheme = (location.protocol === "https:") ? "wss:" : "ws:";
+  const wsUrl = `${wsScheme}//${location.host}/ws/dashboard?token=${encodeURIComponent(token)}`;
+
+  // ---------------- state ----------------
+  let ws = null;
+  let reconnectAttempt = 0;
+  let lastSnapshot = null; // status_snapshot
+  let currentBoxId = null; // when curve view open
+  let currentMaxTemp = 38.0; 
+	let curveStart = null;
+	let curveEnd = null;
+	let curveBoxId = null;
+  // Chart.js instance
+  let chart = null;
+  let currentCurveEvents = [];
+  let allBoxes = [];
+	let selectedBox = null;
+
+  // ---------------- UI elements ----------------
+  const connPill = document.getElementById("connPill");
+  const labPill  = document.getElementById("labPill");
+  const revPill  = document.getElementById("revPill");
+  const plcPill  = document.getElementById("plcPill");
+  const errText  = document.getElementById("errText");
+
+  const viewBoxes = document.getElementById("viewBoxes");
+  const viewCurve = document.getElementById("viewCurve");
+  const boxGrid   = document.getElementById("boxGrid");
+
+  const backBtn   = document.getElementById("backBtn");
+  const curveTitle= document.getElementById("curveTitle");
+  const curveSub  = document.getElementById("curveSub");
+  const curveMeta = document.getElementById("curveMeta");
+  
+  const boxPickerInput  = document.getElementById("boxPickerInput");
+	const boxPickerList   = document.getElementById("boxPickerList");
+	const openAnyCurveBtn = document.getElementById("openAnyCurveBtn");
+	const exportAnyDataBtn = document.getElementById("exportAnyDataBtn");
+
+  backBtn.onclick = () => {
+    currentBoxId = null;
+    showBoxes();
+  };
+
+  // ---------------- helpers ----------------
+  const pillClassForStatus = (tempStatus) => {
+    if (!tempStatus) return "pill warn";
+    const s = String(tempStatus).toLowerCase();
+    if (s === "good") return "pill ok";
+    if (s === "bad")  return "pill bad";
+    return "pill warn";
+  };
+
+  function setConn(text, cls="pill") {
+    connPill.className = cls;
+    connPill.textContent = text;
+  }
+
+  function setErr(msg="") {
+    errText.textContent = msg;
+  }
+
+  function showBoxes() {
+    viewCurve.classList.add("hidden");
+    viewBoxes.classList.remove("hidden");
+  }
+
+  function showCurve() {
+    viewBoxes.classList.add("hidden");
+    viewCurve.classList.remove("hidden");
+  }
+	
+	function curvePrev() {
+	
+	  const span = curveEnd - curveStart;
+	
+	  curveEnd = curveStart;
+	  curveStart = curveStart - span;
+	
+	  requestCurve();
+	}
+	
+	function curveNext() {
+	
+	  const span = curveEnd - curveStart;
+	
+	  curveStart = curveEnd;
+	  curveEnd = curveEnd + span;
+	
+	  requestCurve();
+	}
+	
+	function curveNow() {
+	
+	  const now = Date.now();
+	
+	  curveEnd = now;
+	  curveStart = now - 24 * 3600 * 1000;
+	
+	  requestCurve();
+	}
+
+  function safe(v) { return (v === null || v === undefined || v === "") ? "-" : v; }
+
+	function requestBoxList() {
+	  send({ type: "box_list_request" });
+	}
+	
+	function renderBoxPickerList(boxes) {
+	  boxPickerList.innerHTML = "";
+	
+	  const sorted = [...boxes].sort((a, b) =>
+	    (a.qrcode || "").localeCompare((b.qrcode || ""), "da")
+	  );
+	
+	  for (const b of sorted) {
+	    const opt = document.createElement("option");
+	    opt.value = b.qrcode || "";
+	    boxPickerList.appendChild(opt);
+	  }
+	}
+	
+	function updateSelectedBoxFromInput() {
+	  const val = (boxPickerInput.value || "").trim().toLowerCase();
+	
+	  selectedBox =
+	    allBoxes.find(b => ((b.qrcode || "").toLowerCase() === val)) || null;
+	
+	  const enabled = !!selectedBox;
+	  openAnyCurveBtn.disabled = !enabled;
+	  exportAnyDataBtn.disabled = !enabled;
+	}
+
+
+
+  // ---------------- rendering ----------------
+	  
+  function renderBoxes(snapshot) {
+	  boxGrid.innerHTML = "";
+	
+	  const active = snapshot.active_boxes || [];
+	  const boxes = snapshot.boxes || [];
+	
+	  const map = new Map();
+	  for (const b of boxes) map.set(b.box_id, b);
+	
+	  for (let i = 0; i < 4; i++) {
+	    const boxId = active[i];
+	    const card = document.createElement("div");
+	    card.className = "card";
+	
+	    if (boxId === null || boxId === 0 || boxId === undefined) {
+	      card.style.opacity = "0.55";
+	      card.innerHTML = `
+	        <div class="row">
+	          <p class="title">Tom position</p>
+	          <span class="pill warn">ingen boks</span>
+	        </div>
+	        <div class="meta muted">Position: ${i + 1}</div>
+	      `;
+	      boxGrid.appendChild(card);
+	      continue;
+	    }
+	
+	    const b = map.get(boxId) || {};
+	    const qrcode = b.qrcode || b.vars?.qrcode;
+	    const tempStatus = (b.temp_status || b.vars?.temp_status || b.decision?.value || "").toString().toLowerCase();
+			const clinicName =
+			  b.clinic?.name ||
+			  b.clinic_name ||
+			  b.vars?.clinic_name ||
+			  "";
+			
+			card.innerHTML = `
+			  ...
+			  <div class="meta">
+			    <div><span class="muted">Clinic:</span> ${clinicName ? safe(clinicName) : "-"}</div>
+			  </div>
+			`;
+			
+			const clinicId =
+			  b.clinic?.id ||
+			  b.last_clinicid ||
+			  b.vars?.last_clinicid ||
+			  "";	
+
+	    if (tempStatus === "good") card.classList.add("good");
+	    else if (tempStatus === "bad") card.classList.add("bad");
+	
+	    const pillCls =
+	      tempStatus === "good" ? "pill good" :
+	      tempStatus === "bad" ? "pill bad" :
+	      "pill warn";
+	
+	    card.innerHTML = `
+	      <div class="row">
+	        <p class="title">${safe(qrcode || "-")}</p>
+	        <span class="${pillCls}">${safe(tempStatus || "unknown")}</span>
+	      </div>
+	      <div class="sub">Position: ${i + 1}</div>
+	
+	      <div class="spark-wrap">
+	        <canvas class="spark"></canvas>
+	        <div class="spark-label muted">Transporttemperatur (°C)</div>
+	      </div>
+	
+	      <div class="meta">
+	        <div><span class="muted">QR:</span> ${safe(qrcode)}</div>
+	        <div>
+					  <span class="muted">Clinic:</span>
+					  ${clinicName ? safe(clinicName) : "-"}
+					</div>
+	      </div>
+	    `;
+	
+	    card.onclick = () => {
+	      currentBoxId = boxId;
+	      openCurve(boxId, qrcode);
+	    };
+	
+	    boxGrid.appendChild(card);
+	
+	    const cvs = card.querySelector("canvas.spark");
+	    const pts = sparksByBoxId.get(boxId) || [];
+	    if (cvs) drawSpark(cvs, pts);
+	  }
+	}
+  
+  
+  
+	
+	function drawSpark(canvas, points) {
+	  const dpr = window.devicePixelRatio || 1;
+	  const rect = canvas.getBoundingClientRect();
+	
+	  const cssW = Math.max(1, Math.floor(rect.width));
+	  const cssH = Math.max(1, Math.floor(rect.height));
+	
+	  canvas.width = Math.floor(cssW * dpr);
+	  canvas.height = Math.floor(cssH * dpr);
+	
+	  const ctx = canvas.getContext("2d");
+	  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	  ctx.clearRect(0, 0, cssW, cssH);
+	
+	  const w = cssW, h = cssH;
+	
+	  const ml = 40;
+	  const mr = 8;
+	  const mt = 18;
+	  const mb = 22;
+	  const pw = w - ml - mr;
+	  const ph = h - mt - mb;
+	
+	  ctx.font = "12px sans-serif";
+	  ctx.textBaseline = "middle";
+	
+	  if (!points || points.length < 2) {
+	    ctx.fillStyle = "#9fb3c8";
+	    ctx.globalAlpha = 0.7;
+	    ctx.fillText("No transport data", ml + 10, mt + 16);
+	    ctx.globalAlpha = 1;
+	    return;
+	  }
+	
+	  const limit = Number.isFinite(currentMaxTemp) ? currentMaxTemp : 38.0;
+	
+	  let minV = Infinity, maxV = -Infinity;
+	  for (const p of points) {
+	    const v = Number(p.value);
+	    if (!Number.isFinite(v)) continue;
+	    if (v < minV) minV = v;
+	    if (v > maxV) maxV = v;
+	  }
+	  if (!Number.isFinite(minV) || !Number.isFinite(maxV)) return;
+	
+	  minV = Math.floor(Math.min(minV, limit - 1));
+	  maxV = Math.ceil(Math.max(maxV, limit + 1));
+	  if (maxV - minV < 3) maxV = minV + 3;
+	
+	  const n = points.length;
+	  const xAt = (i) => ml + (i / (n - 1)) * pw;
+	  const yAt = (v) => {
+	    const t = (v - minV) / (maxV - minV);
+	    return mt + ph - t * ph;
+	  };
+	
+	  const yTicks = [minV, limit, maxV]
+	    .filter((v, i, arr) => arr.indexOf(v) === i)
+	    .sort((a, b) => a - b);
+	
+	  for (const tv of yTicks) {
+	    const y = yAt(tv);
+	
+	    ctx.strokeStyle = (tv === limit) ? "#b33a3a" : "#223041";
+	    ctx.lineWidth = 1;
+	    ctx.beginPath();
+	    ctx.moveTo(ml, y);
+	    ctx.lineTo(ml + pw, y);
+	    ctx.stroke();
+	
+	    ctx.fillStyle = (tv === limit) ? "#d64545" : "#9fb3c8";
+	    ctx.fillText(`${tv}°C`, 2, Math.max(mt + 6, y));
+	
+	    if (tv === limit) {
+	      const label = `max ${limit}°C`;
+	      const tw = ctx.measureText(label).width;
+	      ctx.fillText(label, ml + pw - tw, Math.max(mt + 10, y - 4));
+	    }
+	  }
+	
+	  ctx.strokeStyle = "#314254";
+	  ctx.beginPath();
+	  ctx.moveTo(ml, mt);
+	  ctx.lineTo(ml, mt + ph);
+	  ctx.lineTo(ml + pw, mt + ph);
+	  ctx.stroke();
+	
+	  const firstMs = points[0].ms;
+	  const lastMs  = points[points.length - 1].ms;
+	  const fmt = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+	
+	  ctx.fillStyle = "#9fb3c8";
+	  ctx.textBaseline = "alphabetic";
+	  ctx.fillText(fmt(firstMs), ml, h - 4);
+	  const lastTxt = fmt(lastMs);
+	  const tw = ctx.measureText(lastTxt).width;
+	  ctx.fillText(lastTxt, ml + pw - tw, h - 4);
+	
+	  ctx.lineWidth = 2;
+	  ctx.lineJoin = "round";
+	  ctx.lineCap = "round";
+	
+	  for (let i = 0; i < n - 1; i++) {
+	    const p1 = points[i];
+	    const p2 = points[i + 1];
+	
+	    const v1 = Number(p1.value);
+	    const v2 = Number(p2.value);
+	    if (!Number.isFinite(v1) || !Number.isFinite(v2)) continue;
+	
+	    const col = ((p2.colour || p1.colour || "green") + "").toLowerCase();
+	    ctx.strokeStyle = (col === "red") ? "#d64545" : "#2e9b5f";
+	
+	    ctx.beginPath();
+	    ctx.moveTo(xAt(i), yAt(v1));
+	    ctx.lineTo(xAt(i + 1), yAt(v2));
+	    ctx.stroke();
+	  }
+	}
+	
+	const whereEventsPlugin = {
+	  id: "whereEventsPlugin",
+	  afterDatasetsDraw(chart) {
+	    const { ctx, chartArea, scales } = chart;
+	    if (!currentCurveEvents || !currentCurveEvents.length) return;
+	    if (!chartArea || !scales?.x) return;
+	
+	    const laneY = {
+	      lab: chartArea.top + 4,
+	      car: chartArea.top + 20,
+	      clinic: chartArea.top + 36,
+	      phone: chartArea.top + 52,
+	      new: chartArea.top + 68
+	    };
+	
+	    ctx.save();
+	    ctx.font = "11px sans-serif";
+	    ctx.textBaseline = "top";
+	
+	    currentCurveEvents.forEach((ev) => {
+	      const x = scales.x.getPixelForValue(ev.ms);
+	      if (x < chartArea.left || x > chartArea.right) return;
+	
+	      // lodret streg
+	      ctx.strokeStyle = "#8aa0b8";
+	      ctx.lineWidth = 1;
+	      ctx.beginPath();
+	      ctx.moveTo(x, chartArea.top);
+	      ctx.lineTo(x, chartArea.bottom);
+	      ctx.stroke();
+	
+	      // labeltekst
+	      const label = ev.name ? `${ev.at} — ${ev.name}` : `${ev.at}`;
+	      const y = laneY[ev.at] ?? (chartArea.top + 4);
+	
+	      ctx.fillStyle = "#c7d4e2";
+	      ctx.fillText(label, x + 4, y);
+	    });
+	
+	    ctx.restore();
+	  }
+	};
+	
+	function ensureChart() {
+	  if (chart) return chart;
+	  const ctx = document.getElementById("chart");
+	
+	  chart = new Chart(ctx, {
+	    type: "line",
+	    plugins: [whereEventsPlugin],
+	    data: {
+	      datasets: [
+		      {
+					  label: "Temperatur",
+					  data: [],
+					  parsing: false,
+					  pointRadius: 0,
+					  borderWidth: 2,
+					  tension: 0.15,
+					
+					  segment: {
+					    borderColor: (ctx) => {
+					      const p1 = ctx.p0?.raw?._meta?.colour;
+					      const p2 = ctx.p1?.raw?._meta?.colour;
+					
+					      const col = (p2 || p1 || "green").toLowerCase();
+					
+					      return col === "red"
+					        ? "#ff3b3b"
+					        : "#2ecc71";
+					    }
+					  }
+					},
+		      {
+		        label: "Max temp",
+		        data: [],
+		        parsing: false,
+		        pointRadius: 0,
+		        borderWidth: 1,
+		        borderColor: "#d64545",
+		        tension: 0
+		      }
+		    ]
+			},
+	    options: {
+	      responsive: true,
+	      animation: false,
+	      layout: {
+				  padding: {
+				    top: 80
+				  }
+				},
+	      scales: {
+	        x: {
+	          type: "linear",
+	          ticks: {
+	            color: "#9fb3c8",
+	            maxTicksLimit: 8,
+	            callback: (value) => {
+	              const d = new Date(Number(value));
+	              return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+	            }
+	          },
+	          grid: { color: "#1b2633" }
+	        },
+	        y: {
+	          ticks: { color: "#9fb3c8" },
+	          grid: { color: "#1b2633" }
+	        }
+	      },
+	      plugins: {
+	        legend: { display: true},
+	        tooltip: {
+	          callbacks: {
+	            title: (items) => {
+	              if (!items || !items.length) return "";
+	              const x = items[0].parsed.x;
+	              return new Date(x).toLocaleString();
+	            },
+	            label: (ctx) => {
+	              const p = ctx.raw._meta;
+	              const where = p?.where;
+	              const c = p?.colour;
+	              const at = where?.at || "-";
+	              const name = where?.name || "-";
+	              return [
+	                `T: ${ctx.parsed.y} °C`,
+	                `Farve: ${c || "-"}`,
+	                `Hvor: ${at} ${name !== "-" ? "— " + name : ""}`
+	              ];
+	            }
+	          }
+	        }
+	      }
+	    }
+	  });
+	
+	  return chart;
+	}
+
+	function openCurve(boxId, qrcode) {
+	  curveBoxId = boxId;
+	
+	  const now = Date.now();
+	  curveEnd = now;
+	  curveStart = now - 24 * 3600 * 1000;
+	
+	  showCurve();
+	
+	  curveTitle.textContent = qrcode ? `Kurve — ${qrcode}` : "Kurve";
+	  curveSub.textContent = "";
+	
+	  requestCurve();
+	}
+
+	function requestCurve() {
+	  send({
+	    type: "curve_open",
+	    box_id: curveBoxId,
+	    start_ms: curveStart,
+	    end_ms: curveEnd
+	  });
+	}	
+	
+
+	function renderCurve(msg) {
+	  const points = msg.points || [];
+	  const series = [];
+	  const limitSeries = [];
+	  let redCount = 0;
+	
+	  for (const p of points) {
+	    const x = p.ms;
+	    const y = p.value;
+	    const meta = { colour: p.colour, where: p.where };
+	
+	    if (p.colour === "red") redCount++;
+	
+	    series.push({ x, y, _meta: meta });
+	    limitSeries.push({ x, y: currentMaxTemp });
+	  }
+	
+	  const ch = ensureChart();
+	  ch.data.datasets[0].data = series;
+	  ch.data.datasets[1].data = limitSeries;
+	  ch.options.scales.x.min = msg.start_ms ?? curveStart;
+		ch.options.scales.x.max = msg.end_ms ?? curveEnd;
+		currentCurveEvents = msg.events || [];
+	  ch.update();
+	
+	  const whereSummary = (() => {
+	    const last = points[points.length - 1];
+	    if (!last || !last.where) return "";
+	    const w = last.where;
+	    return `Seneste lokation: ${w.at || "-"} ${w.name ? "— " + w.name : ""}`;
+	  })();
+	
+		const fmtRange = (ms) =>
+		  new Date(ms).toLocaleString([], {
+		    year: "numeric",
+		    month: "2-digit",
+		    day: "2-digit",
+		    hour: "2-digit",
+		    minute: "2-digit"
+		  });
+		
+		curveMeta.textContent =
+		  `Punkter: ${points.length} | Max: ${currentMaxTemp} °C | ` +
+		  `${fmtRange(msg.start_ms || curveStart)} → ${fmtRange(msg.end_ms || curveEnd)} | ` +
+		  whereSummary;	
+	}
+
+	function curvePrev() {
+	  const span = curveEnd - curveStart;
+	  curveEnd = curveStart;
+	  curveStart = curveStart - span;
+	  requestCurve();
+	}
+	
+	function curveNext() {
+	  const span = curveEnd - curveStart;
+	  const now = Date.now();
+	
+	  let nextStart = curveEnd;
+	  let nextEnd = curveEnd + span;
+	
+	  if (nextEnd > now) {
+	    nextEnd = now;
+	    nextStart = now - span;
+	  }
+	
+	  curveStart = nextStart;
+	  curveEnd = nextEnd;
+	  requestCurve();
+	}
+	
+	function curveNow() {
+	  const now = Date.now();
+	  curveEnd = now;
+	  curveStart = now - 24 * 3600 * 1000;
+	  requestCurve();
+	}
+
+
+	boxPickerInput.addEventListener("input", updateSelectedBoxFromInput);
+	
+	openAnyCurveBtn.onclick = () => {
+	  if (!selectedBox) return;
+	  currentBoxId = selectedBox.box_id;
+	  openCurve(selectedBox.box_id, selectedBox.qrcode);
+	};
+	
+	exportAnyDataBtn.onclick = () => {
+	  if (!selectedBox) return;
+	
+	  const now = Date.now();
+	  const start_ms = curveStart ?? (now - 24 * 3600 * 1000);
+	  const end_ms = curveEnd ?? now;
+	  console.log("sending curve_export", selectedBox.box_id, start_ms, end_ms);
+	
+	  send({
+	    type: "curve_export",
+	    box_id: selectedBox.box_id,
+	    start_ms,
+	    end_ms
+	  });
+	};
+
+  // ---------------- websocket ----------------
+  function connect() {
+    setErr("");
+    setConn("WS: connecting…", "pill warn");
+
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      reconnectAttempt = 0;
+      setConn("WS: connected", "pill ok");
+    };
+    
+		window.ws = ws;
+		console.log("WS ready", ws.url);
+
+		document.getElementById("curvePrevBtn").onclick = curvePrev;
+		document.getElementById("curveNowBtn").onclick = curveNow;
+		document.getElementById("curveNextBtn").onclick = curveNext;
+    
+    ws.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); }
+      catch { return; }
+			
+			console.log("WS message", msg.type, msg);
+      
+      if (msg.type === "hello") {
+        labPill.textContent = `Lab: ${safe(msg.lab_id)}`;
+        requestBoxList();
+        return;
+      }
+
+      if (msg.type === "status_snapshot") {
+        lastSnapshot = msg;
+        revPill.textContent = `rev: ${safe(msg.rev)}`;
+        plcPill.textContent = `PLC: ${msg.plc_online ? "online" : "offline"}`;
+        plcPill.className = msg.plc_online ? "pill ok" : "pill bad";
+        if (msg.max_temp != null) currentMaxTemp = Number(msg.max_temp);
+        renderBoxes(msg);
+        return;
+      }
+
+      if (msg.type === "curve_data") {
+        // only update chart if we are viewing that box
+        if (currentBoxId && msg.box_id === currentBoxId) {
+          if (msg.error) {
+            curveMeta.textContent = `Fejl: ${msg.error} ${msg.message || ""}`;
+          } else {
+            renderCurve(msg);
+          }
+        }
+        return;
+      }
+
+			if (msg.type === "curve_export_data") {
+			  try {
+			    const blob = new Blob(
+			      [msg.content || ""],
+			      { type: msg.mime || "text/csv;charset=utf-8" }
+			    );
+			
+			    const url = URL.createObjectURL(blob);
+			
+			    const a = document.createElement("a");
+			    a.href = url;
+			    a.download = msg.filename || "curve_export.csv";
+			    a.style.display = "none";
+			
+			    document.body.appendChild(a);
+			    a.click();
+			
+			    setTimeout(() => {
+			      URL.revokeObjectURL(url);
+			      a.remove();
+			    }, 1000);
+			  } catch (err) {
+			    console.error("curve_export_data download failed", err);
+			  }
+			  return;
+			}
+
+			if (msg.type === "transport_spark") {
+			  // msg.points = [{ms,value,colour,where:{...}}, ...]
+			  sparksByBoxId.set(msg.box_id, msg.points || []);
+			  // hvis vi allerede viser snapshot, så redraw
+			  if (lastSnapshot) renderBoxes(lastSnapshot);
+			  return;
+			}
+
+      if (msg.type === "error") {
+        setErr(`${msg.code || "error"}: ${msg.message || msg.msg || ""}`);
+        return;
+      }
+      
+      if (msg.type === "box_list") {
+			  allBoxes = msg.boxes || [];
+			  renderBoxPickerList(allBoxes);
+			  updateSelectedBoxFromInput();
+			  return;
+			}
+			if (msg.type === "box_list") {
+			  allBoxes = msg.boxes || [];
+			  renderBoxPickerList(allBoxes);
+			  updateSelectedBoxFromInput();
+			  return;
+			}
+
+
+    };
+
+    
+    ws.onerror = () => {
+      setConn("WS: error", "pill bad");
+    };
+
+    ws.onclose = () => {
+      setConn("WS: disconnected", "pill bad");
+      scheduleReconnect();
+    };
+  }
+
+  function scheduleReconnect() {
+    reconnectAttempt++;
+    const ms = Math.min(15000, 500 * Math.pow(2, reconnectAttempt));
+    setErr(`Reconnect om ${ms} ms`);
+    setTimeout(connect, ms);
+  }
+
+  function send(obj) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify(obj));
+  }
+
+  // start
+  showBoxes();
+  connect();
+})();
+</script>
+</body>
+</html>

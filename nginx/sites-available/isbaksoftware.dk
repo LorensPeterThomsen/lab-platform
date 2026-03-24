@@ -1,0 +1,92 @@
+server {
+  listen 80;
+  server_name isbaksoftware.dk www.isbaksoftware.dk;
+  return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name www.isbaksoftware.dk;
+    server_name isbaksoftware.dk;
+
+    ssl_certificate /etc/letsencrypt/live/isbaksoftware.dk/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/isbaksoftware.dk/privkey.pem;
+    # ssl_certificate     /etc/nginx/ssl/your.crt;
+    # ssl_certificate_key /etc/nginx/ssl/your.key;
+
+    # (valgfrit) hvis du vil servere en statisk index.html:
+    root /var/www/isbak;
+    index index.html;
+
+#    location ~ /\.(git|env) { return 444; }
+#    add_header X-Content-Type-Options nosniff always;
+#    add_header X-Frame-Options DENY always;
+#    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    # VIGTIGT: API skal altid til backend
+    location ^~ /auth/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    location = /healthz {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    location ^~ /admin/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    location /livelink {
+   	if ($livelink_origin_ok = 0) { return 403; }
+
+        limit_conn livelink_conn 10;
+        limit_req zone=livelink_req burst=20 nodelay;
+
+	proxy_pass http://127.0.0.1:9001/livelink;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+    
+        access_log off;
+    }
+    location /dashboard/ {
+        alias /var/www/dashboard/;
+        try_files $uri $uri/ /dashboard/index.html;
+    }
+
+    # WebSocket proxy til DS (kører lokalt på 9200)
+    location /ws/dashboard {
+        proxy_pass http://127.0.0.1:9200/ws/dashboard;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host $host;
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+    }
+    location / { try_files $uri /index.html; }
+}

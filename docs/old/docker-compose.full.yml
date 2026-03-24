@@ -1,0 +1,126 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: lab_postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  login_server:
+    build:
+      context: ./services/login_server
+      dockerfile: Dockerfile
+    container_name: lab_login_server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      APP_PORT: ${LOGIN_SERVER_PORT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "${LOGIN_SERVER_PORT}"
+    networks:
+      - backend
+
+  dashboard_server:
+    build:
+      context: ./services/dashboard_server
+      dockerfile: Dockerfile
+    container_name: lab_dashboard_server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      APP_PORT: ${DASHBOARD_SERVER_PORT}
+      LIVELINK_HOST: livelinkd
+      LIVELINK_PORT: ${LIVELINK_FEED_PORT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      livelinkd:
+        condition: service_started
+    expose:
+      - "${DASHBOARD_SERVER_PORT}"
+    networks:
+      - backend
+
+  livelinkd:
+    build:
+      context: ./services/livelinkd
+      dockerfile: Dockerfile
+    container_name: lab_livelinkd
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      FEED_PORT: ${LIVELINK_FEED_PORT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "${LIVELINK_FEED_PORT}"
+    networks:
+      - backend
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: lab_nginx
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - login_server
+      - dashboard_server
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./frontend/public:/usr/share/nginx/html:ro
+      - ./data/letsencrypt:/etc/letsencrypt
+    networks:
+      - edge
+      - backend
+
+networks:
+  edge:
+    driver: bridge
+  backend:
+    driver: bridge
+

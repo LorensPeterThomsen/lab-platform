@@ -1,0 +1,20 @@
+services:
+  dashboard_server:
+    build:
+      context: ./services/dashboard_server
+      dockerfile: Dockerfile
+    container_name: lab_dashboard_server
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ}
+      DS_PG_CONNINFO: ${DS_PG_CONNINFO}
+      DS_TOKENS_FILE: /etc/ds_tokens.json
+      LIVELINK_HOST: ${LIVELINK_HOST}
+      LIVELINK_PORT: ${LIVELINK_PORT}
+      APP_PORT: ${DASHBOARD_SERVER_PORT}
+    volumes:
+      - ./config/ds_tokens.json:/etc/ds_tokens.json:ro
+    network_mode: host
+

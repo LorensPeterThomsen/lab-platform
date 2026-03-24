@@ -1,0 +1,7 @@
+.env
+data/postgres/
+data/backups/
+data/letsencrypt/
+**/build/
+**/*.o
+**/*.log

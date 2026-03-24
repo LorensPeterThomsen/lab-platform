@@ -1,0 +1,7 @@
+dashboard_server
+*.o
+*.log
+.git
+build
+tmp
+

@@ -1,0 +1,8 @@
+[
+  {"token":"LAB1_PLC_TOKEN_LONG_123", "lab_id":"Lab1", "role":"plcbridge", "enabled":true},
+  {"token":"LAB1_DASH_TOKEN_LONG_123","lab_id":"Lab1", "role":"dashboard", "enabled":true},
+
+  {"token":"LAB2_PLC_TOKEN_LONG_123", "lab_id":"Lab2", "role":"plcbridge", "enabled":true},
+  {"token":"LAB2_DASH_TOKEN_LONG_123","lab_id":"Lab2", "role":"dashboard", "enabled":true}
+]
+

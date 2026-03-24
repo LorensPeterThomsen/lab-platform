@@ -1,0 +1,112 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: lab_postgres
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  livelinkd:
+    build:
+      context: ./services/livelinkd
+      dockerfile: Dockerfile
+    container_name: lab_livelinkd
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      DB_CONNINFO: ${DB_CONNINFO}
+      LIVELINK_BIND: ${LIVELINK_BIND}
+      LIVELINK_PORT: ${LIVELINK_PORT}
+      LIVELINK_POLL_MS: ${LIVELINK_POLL_MS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "9000"
+    networks:
+      - backend
+
+  dashboard_server:
+    build:
+      context: ./services/dashboard_server
+      dockerfile: Dockerfile
+    container_name: lab_dashboard_server
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      DB_CONNINFO: ${DB_CONNINFO}
+      TOKENS_FILE: ${TOKENS_FILE}
+      LIVELINK_HOST: ${LIVELINK_HOST}
+      LIVELINK_PORT: ${LIVELINK_PORT}
+      DASHBOARD_BIND: ${DASHBOARD_BIND}      
+      DASHBOARD_PORT: ${DASHBOARD_PORT}
+    volumes:
+      - ./config/ds_tokens.json:/etc/ds_tokens.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      livelinkd:
+        condition: service_started
+    expose:
+      - "9200"
+    networks:
+      - backend
+
+  login_server:
+    build:
+      context: ./services/login_server
+      dockerfile: Dockerfile
+    container_name: lab_login_server
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      APP_DB: ${DB_CONNINFO}
+      LOGIN_BIND: ${LOGIN_BIND}
+      LOGIN_PORT: ${LOGIN_PORT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
+    networks:
+      - backend
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: lab_nginx
+    restart: unless-stopped
+    depends_on:
+      - login_server
+      - dashboard_server
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./frontend/public:/usr/share/nginx/html:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    networks:
+      - backend
+      - edge
+
+networks:
+  edge:
+    driver: bridge
+  backend:
+    driver: bridge
+

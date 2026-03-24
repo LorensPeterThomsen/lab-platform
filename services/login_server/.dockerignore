@@ -1,0 +1,7 @@
+build
+*.o
+*.log
+.git
+tmp
+cookies.txt
+

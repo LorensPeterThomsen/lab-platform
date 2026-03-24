@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bootstrap første admin</title>
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;line-height:1.4}
+    .card{border:1px solid #ddd;border-radius:10px;padding:16px;margin:14px 0}
+    label{display:block;margin-top:10px;font-weight:600}
+    input{width:100%;padding:10px;border:1px solid #bbb;border-radius:8px}
+    button{margin-top:14px;padding:10px 14px;border:0;border-radius:8px;cursor:pointer}
+    .ok{color:#0a6}
+    .bad{color:#c00}
+    pre{background:#f6f6f6;border:1px solid #e5e5e5;border-radius:10px;padding:12px;overflow:auto}
+    .warn{background:#fff7e6;border:1px solid #ffd27a}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .row > div{flex:1;min-width:260px}
+    small{color:#555}
+    code{background:#f2f2f2;padding:1px 4px;border-radius:4px}
+  </style>
+</head>
+<body>
+  <h1>Bootstrap: opret første admin for et lab</h1>
+
+  <div class="card warn">
+    <b>Vigtigt</b>
+    <ul>
+      <li>Bootstrap-token er typisk <b>engangs</b> og kan udløbe.</li>
+      <li>Token skal udleveres sikkert af leverandøren.</li>
+      <li>Når første admin er oprettet, skal resten oprettes via admin-panelet.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label for="lab">Lab code</label>
+        <input id="lab" placeholder="fx lab-q" autocomplete="off" />
+        <small>Det tekniske lab-id (fx <code>lab-q</code>), ikke et visningsnavn.</small>
+      </div>
+      <div>
+        <label for="token">Bootstrap token</label>
+        <input id="token" placeholder="indsæt token" autocomplete="off" />
+        <small>Token er base64url (ligner lange tegn/underscore/bindestreg).</small>
+      </div>
+    </div>
+
+    <label for="email">Admin email</label>
+    <input id="email" placeholder="admin@lab-q.dk" autocomplete="email" />
+
+    <label for="password">Admin password</label>
+    <input id="password" type="password" placeholder="min. 12 tegn" autocomplete="new-password" />
+
+    <button id="btn">Opret første admin</button>
+
+    <pre id="out">Udfyld felter og tryk “Opret første admin”.</pre>
+  </div>
+
+  <div class="card">
+    <b>Efter success:</b>
+    <ol>
+      <li>Gå til hovedsiden og log ind med admin-brugeren.</li>
+      <li>Åbn Admin-siden og opret de øvrige brugere i lab’et.</li>
+    </ol>
+  </div>
+
+<script>
+async function bootstrapAdmin() {
+  const lab = document.getElementById("lab").value.trim();
+  const token = document.getElementById("token").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  const out = document.getElementById("out");
+  out.className = "";
+  out.textContent = "Arbejder...";
+
+  if (!lab || !token || !email || !password) {
+    out.className = "bad";
+    out.textContent = "Udfyld alle felter.";
+    return;
+  }
+
+  try {
+    const r = await fetch("/auth/bootstrap_admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lab, token, email, password })
+    });
+
+    const text = await r.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+
+    if (r.ok) {
+      out.className = "ok";
+      out.textContent = "OK\n" + (json ? JSON.stringify(json, null, 2) : text);
+      // blank token + password after success
+      document.getElementById("token").value = "";
+      document.getElementById("password").value = "";
+    } else {
+      out.className = "bad";
+      out.textContent = `HTTP ${r.status}\n` + (json ? JSON.stringify(json, null, 2) : text);
+    }
+  } catch (e) {
+    out.className = "bad";
+    out.textContent = "Netværksfejl: " + e;
+  }
+}
+
+document.getElementById("btn").addEventListener("click", bootstrapAdmin);
+</script>
+
+</body>
+</html>
